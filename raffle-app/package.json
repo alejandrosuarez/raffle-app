@@ -4,7 +4,6 @@
   "description": "A simple raffle app using Supabase and Node.js",
   "main": "api/index.js",
   "scripts": {
-    "build": "node api/index.js"
   },
   "dependencies": {
     "express": "^4.17.1",
