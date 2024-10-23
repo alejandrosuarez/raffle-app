@@ -85,9 +85,14 @@
     <a id="whatsappBtn" href="#" target="_blank">Send via WhatsApp</a>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Supabase Realtime Integration -->
+  <script src="https://unpkg.com/@supabase/supabase-js"></script>
   <script>
-    const socket = io();
+    // Fetch Supabase environment variables
+    const supabaseUrl = "{{SUPABASE_URL}}";
+    const supabaseAnonKey = "{{SUPABASE_ANON_KEY}}";
+    const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+
     const numbersGrid = document.getElementById('numbersGrid');
     const userForm = document.getElementById('userForm');
     const reserveForm = document.getElementById('reserveForm');
@@ -168,29 +173,30 @@
       whatsappLink.classList.remove('hidden');
     }
 
-    // Fetch initial numbers from the server
-    socket.on('numbersList', (numbers) => {
-      updateGrid(numbers);
-    });
+    // Fetch initial numbers from Supabase
+    async function fetchNumbers() {
+      const { data, error } = await supabase
+        .from('numbers')
+        .select('*');
+      
+      if (!error) {
+        updateGrid(data);
+      }
+    }
 
-    // Listen for updates when a number is reserved
-    socket.on('numberReserved', () => {
-      fetch('/api/numbers')
-        .then(response => response.json())
-        .then(data => {
-          updateGrid(data.numbers);
-        });
-    });
+    // Subscribe to real-time updates via Supabase
+    function subscribeToUpdates() {
+      supabase
+        .from('numbers')
+        .on('UPDATE', payload => {
+          fetchNumbers(); // Refresh the grid on every update
+        })
+        .subscribe();
+    }
 
-    // Listen for updates when a number's status changes (due to expiry or payment)
-    socket.on('refreshNumbers', () => {
-      fetch('/api/numbers')
-        .then(response => response.json())
-        .then(data => {
-          updateGrid(data.numbers); // Update the UI with the latest number status
-        });
-    });
-
+    // Initial fetch and subscription to updates
+    fetchNumbers();
+    subscribeToUpdates();
   </script>
 </body>
 </html>

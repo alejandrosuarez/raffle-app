@@ -43,6 +43,21 @@ app.get('/admin', (req, res) => {
   });
 });
 
+app.get('/', (req, res) => {
+  const htmlFilePath = path.join(__dirname, '../public/index.html');
+  fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
+    if (err) {
+      return res.status(500).send('Error reading index.html');
+    }
+    // Inject environment variables
+    const updatedHtml = data
+      .replace('{{SUPABASE_URL}}', process.env.SUPABASE_URL)
+      .replace('{{SUPABASE_ANON_KEY}}', process.env.SUPABASE_ANON_KEY);
+    res.send(updatedHtml);
+  });
+});
+
+
 // Reserve multiple numbers and store user info in Supabase
 app.post('/api/reserve-numbers', async (req, res) => {
   const { numbers, name, email, phone } = req.body;
