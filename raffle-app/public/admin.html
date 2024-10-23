@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Admin - Raffle Management</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+    h1 {
+      text-align: center;
+    }
+    #passphrase-form {
+      max-width: 300px;
+      margin: 50px auto;
+      text-align: center;
+    }
+    label, input, button {
+      display: block;
+      margin: 10px auto;
+    }
+    #admin-panel {
+      display: none;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 20px 0;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 10px;
+      text-align: center;
+    }
+    th {
+      background-color: #f2f2f2;
+    }
+    .available {
+      background-color: #ffffff;
+    }
+    .reserved {
+      background-color: #ffef9e;
+    }
+    .paid {
+      background-color: #9eff9e;
+    }
+    .hidden {
+      display: none;
+    }
+    #admin-actions {
+      text-align: center;
+    }
+    #confirmPayment {
+      padding: 10px;
+      margin: 20px auto;
+    }
+  </style>
+</head>
+<body>
+  <h1>Admin Panel - Raffle Numbers</h1>
+
+  <!-- Passphrase Form -->
+  <div id="passphrase-form">
+    <h3>Enter Admin Passphrase</h3>
+    <input type="password" id="passphrase" placeholder="Enter passphrase">
+    <button id="submitPassphrase">Submit</button>
+    <p id="passphrase-error" class="hidden" style="color: red;">Incorrect passphrase, try again.</p>
+  </div>
+
+  <!-- Admin Panel -->
+  <div id="admin-panel">
+    <!-- Table to display numbers and user details -->
+    <table>
+      <thead>
+        <tr>
+          <th>Select</th>
+          <th>Number</th>
+          <th>User Name</th>
+          <th>Email</th>
+          <th>Phone</th>
+          <th>Reservation Expiry</th>
+          <th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="numbersTable">
+        <!-- Numbers will be dynamically inserted here -->
+      </tbody>
+    </table>
+
+    <!-- Admin actions to confirm payments -->
+    <div id="admin-actions" class="hidden">
+      <button id="confirmPayment">Confirm Payment</button>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const passphraseForm = document.getElementById('passphrase-form');
+    const adminPanel = document.getElementById('admin-panel');
+    const submitPassphraseBtn = document.getElementById('submitPassphrase');
+    const passphraseInput = document.getElementById('passphrase');
+    const passphraseError = document.getElementById('passphrase-error');
+    const numbersTable = document.getElementById('numbersTable');
+    const adminActions = document.getElementById('admin-actions');
+    const confirmPaymentBtn = document.getElementById('confirmPayment');
+
+    const correctPassphrase = 'admin123'; // Set the correct passphrase here
+    let selectedReservedNumbers = [];
+    let countdownIntervals = {};
+
+    // Handle passphrase submission
+    submitPassphraseBtn.addEventListener('click', () => {
+      if (passphraseInput.value === correctPassphrase) {
+        passphraseForm.classList.add('hidden');
+        adminPanel.style.display = 'block';
+      } else {
+        passphraseError.classList.remove('hidden');
+      }
+    });
+
+    // Function to update the table dynamically with checkboxes and color coding
+    function updateTable(numbers) {
+      numbersTable.innerHTML = '';
+      numbers.forEach(number => {
+        const row = document.createElement('tr');
+        
+        const selectCell = document.createElement('td');
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        if (number.status === 'reserved') {
+          checkbox.addEventListener('change', () => toggleSelected(number.number, checkbox));
+        } else {
+          checkbox.disabled = true;
+        }
+        selectCell.appendChild(checkbox);
+        row.appendChild(selectCell);
+        
+        const numberCell = document.createElement('td');
+        numberCell.textContent = number.number;
+        row.appendChild(numberCell);
+        
+        const nameCell = document.createElement('td');
+        nameCell.textContent = number.name || 'N/A';
+        row.appendChild(nameCell);
+        
+        const emailCell = document.createElement('td');
+        emailCell.textContent = number.email || 'N/A';
+        row.appendChild(emailCell);
+        
+        const phoneCell = document.createElement('td');
+        phoneCell.textContent = number.phone || 'N/A';
+        row.appendChild(phoneCell);
+
+        const expiryCell = document.createElement('td');
+        if (number.status === 'reserved') {
+          expiryCell.id = `expiry-${number.number}`; // Assign a unique ID to the cell
+          updateCountdown(number.number, number.reservation_expiry); // Start real-time countdown
+        } else {
+          expiryCell.textContent = 'N/A';
+        }
+        row.appendChild(expiryCell);
+
+        const statusCell = document.createElement('td');
+        statusCell.textContent = number.status;
+        row.classList.add(number.status); // Add color class for status
+        row.appendChild(statusCell);
+
+        numbersTable.appendChild(row);
+      });
+    }
+
+    // Toggle selected reserved numbers
+    function toggleSelected(number, checkbox) {
+      if (checkbox.checked) {
+        selectedReservedNumbers.push(number);
+      } else {
+        selectedReservedNumbers = selectedReservedNumbers.filter(n => n !== number);
+      }
+      adminActions.classList.toggle('hidden', selectedReservedNumbers.length === 0);
+    }
+
+    // Update the countdown in real-time
+    function updateCountdown(number, expiryTime) {
+      const expiryDate = new Date(expiryTime);
+
+      // Clear any previous interval for this number
+      if (countdownIntervals[number]) {
+        clearInterval(countdownIntervals[number]);
+      }
+
+      countdownIntervals[number] = setInterval(() => {
+        const now = new Date();
+        const timeDiff = expiryDate - now;
+        const expiryCell = document.getElementById(`expiry-${number}`);
+
+        if (timeDiff <= 0) {
+          expiryCell.textContent = 'Expired';
+          clearInterval(countdownIntervals[number]); // Stop the countdown if expired
+        } else {
+          const minutesLeft = Math.floor(timeDiff / 60000);
+          const secondsLeft = Math.floor((timeDiff % 60000) / 1000);
+          expiryCell.textContent = `${minutesLeft} min ${secondsLeft} sec`;
+        }
+      }, 1000); // Update every second
+    }
+
+    // Handle payment confirmation
+    confirmPaymentBtn.addEventListener('click', () => {
+      if (selectedReservedNumbers.length === 0) {
+        alert('Please select reserved numbers to confirm payment.');
+        return;
+      }
+
+      // Send selected reserved numbers to the server to confirm payment
+      fetch('/api/confirm-payment', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ numbers: selectedReservedNumbers }),
+      })
+      .then(response => response.json())
+      .then(data => {
+        alert(data.message);
+        // Refresh the table after confirming payment
+        socket.emit('refreshNumbers');
+      });
+    });
+
+    // Fetch initial numbers from the server
+    socket.on('numbersList', (numbers) => {
+      updateTable(numbers);
+    });
+
+    // Listen for updates when a number's status changes
+    socket.on('numberReserved', () => {
+      fetch('/api/numbers')
+        .then(response => response.json())
+        .then(data => {
+          updateTable(data.numbers);
+        });
+    });
+
+    // Refresh numbers upon manual admin action
+    socket.on('refreshNumbers', () => {
+      fetch('/api/numbers')
+        .then(response => response.json())
+        .then(data => {
+          updateTable(data.numbers);
+        });
+    });
+  </script>
+</body>
+</html>

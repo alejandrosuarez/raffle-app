@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Raffle UI</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+    }
+    h1 {
+      text-align: center;
+    }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(10, 1fr); /* 10 columns for the matrix */
+      gap: 10px;
+      max-width: 800px;
+      margin: 20px auto;
+    }
+    .grid div {
+      padding: 15px;
+      text-align: center;
+      border: 1px solid #ddd;
+      border-radius: 5px;
+      cursor: pointer;
+      font-weight: bold;
+    }
+    .available {
+      background-color: #9eff9e;
+    }
+    .reserved {
+      background-color: #ffef9e;
+    }
+    .sold {
+      background-color: #ff9e9e;
+    }
+    .selected {
+      background-color: #7ef07e;
+    }
+    .hidden {
+      display: none;
+    }
+    #userForm, #whatsappLink {
+      max-width: 400px;
+      margin: 20px auto;
+    }
+    label, input {
+      display: block;
+      margin: 10px 0;
+      width: 100%;
+    }
+    button {
+      margin-top: 10px;
+      padding: 10px;
+      width: 100%;
+    }
+  </style>
+</head>
+<body>
+  <h1>Raffle Numbers</h1>
+  
+  <!-- Grid to display numbers -->
+  <div class="grid" id="numbersGrid">
+    <!-- Numbers will be dynamically inserted here -->
+  </div>
+
+  <!-- Form to enter user details -->
+  <div id="userForm" class="hidden">
+    <h3>Reserve Selected Numbers</h3>
+    <form id="reserveForm">
+      <label for="name">Name:</label>
+      <input type="text" id="name" required><br>
+      <label for="email">Email:</label>
+      <input type="email" id="email" required><br>
+      <label for="phone">Phone:</label>
+      <input type="tel" id="phone" required><br>
+      <button type="submit">Reserve Numbers</button>
+    </form>
+  </div>
+
+  <!-- WhatsApp confirmation link -->
+  <div id="whatsappLink" class="hidden">
+    <h3>Send Confirmation via WhatsApp</h3>
+    <a id="whatsappBtn" href="#" target="_blank">Send via WhatsApp</a>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const socket = io();
+    const numbersGrid = document.getElementById('numbersGrid');
+    const userForm = document.getElementById('userForm');
+    const reserveForm = document.getElementById('reserveForm');
+    const whatsappLink = document.getElementById('whatsappLink');
+    const whatsappBtn = document.getElementById('whatsappBtn');
+
+    let selectedNumbers = JSON.parse(sessionStorage.getItem('selectedNumbers')) || [];
+
+    // Function to update the grid dynamically
+    function updateGrid(numbers) {
+      numbersGrid.innerHTML = '';
+      numbers.forEach(number => {
+        const numberCell = document.createElement('div');
+        numberCell.textContent = number.number;
+        numberCell.className = number.status;
+
+        if (number.status === 'available') {
+          numberCell.classList.add('available');
+          numberCell.addEventListener('click', () => selectNumber(number.number, numberCell));
+        } else if (selectedNumbers.includes(number.number)) {
+          numberCell.classList.add('selected'); // If the number is already selected by this user
+        }
+
+        numbersGrid.appendChild(numberCell);
+      });
+    }
+
+    // Select or deselect a number
+    function selectNumber(number, cell) {
+      if (selectedNumbers.includes(number)) {
+        selectedNumbers = selectedNumbers.filter(n => n !== number);
+        cell.classList.remove('selected');
+      } else {
+        selectedNumbers.push(number);
+        cell.classList.add('selected');
+      }
+      // Save selections in session storage
+      sessionStorage.setItem('selectedNumbers', JSON.stringify(selectedNumbers));
+      // Show the form when there are selected numbers
+      userForm.classList.toggle('hidden', selectedNumbers.length === 0);
+    }
+
+    // Handle the form submission
+    reserveForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const name = document.getElementById('name').value;
+      const email = document.getElementById('email').value;
+      const phone = document.getElementById('phone').value;
+      const reservationExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15-minute expiry
+
+      if (selectedNumbers.length === 0) {
+        alert('Please select at least one number.');
+        return;
+      }
+
+      // Send selected numbers and user info to the server
+      fetch('/api/reserve-numbers', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ numbers: selectedNumbers, name, email, phone, reservationExpiry }),
+      })
+      .then(response => response.json())
+      .then(data => {
+        alert(data.message);
+        generateWhatsAppLink(name, selectedNumbers, phone);
+        sessionStorage.removeItem('selectedNumbers'); // Clear selection after reservation
+      });
+    });
+
+    // Generate a WhatsApp link for confirmation
+    function generateWhatsAppLink(name, numbers, phone) {
+      const message = `Hello ${name}, you have reserved the following numbers: ${numbers.join(', ')}. Please confirm your reservation by completing the payment.`;
+      const encodedMessage = encodeURIComponent(message);
+      const whatsappUrl = `https://wa.me/${phone}?text=${encodedMessage}`;
+      whatsappBtn.href = whatsappUrl;
+      whatsappLink.classList.remove('hidden');
+    }
+
+    // Fetch initial numbers from the server
+    socket.on('numbersList', (numbers) => {
+      updateGrid(numbers);
+    });
+
+    // Listen for updates when a number is reserved
+    socket.on('numberReserved', () => {
+      fetch('/api/numbers')
+        .then(response => response.json())
+        .then(data => {
+          updateGrid(data.numbers);
+        });
+    });
+
+    // Listen for updates when a number's status changes (due to expiry or payment)
+    socket.on('refreshNumbers', () => {
+      fetch('/api/numbers')
+        .then(response => response.json())
+        .then(data => {
+          updateGrid(data.numbers); // Update the UI with the latest number status
+        });
+    });
+
+  </script>
+</body>
+</html>

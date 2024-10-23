@@ -1,0 +1,19 @@
+{
+  "name": "raffle-app",
+  "version": "1.0.0",
+  "description": "A simple raffle app using SQLite and Node.js",
+  "main": "api/index.js",
+  "scripts": {
+    "start": "node api/index.js",
+    "build": "node api/index.js"
+  },
+  "dependencies": {
+    "express": "^4.17.1",
+    "sqlite3": "^5.0.2",
+    "socket.io": "^4.0.0"
+  },
+  "engines": {
+    "node": ">=16.x"
+  },
+  "license": "MIT"
+}
