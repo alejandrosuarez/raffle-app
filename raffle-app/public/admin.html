@@ -94,9 +94,15 @@
     </div>
   </div>
 
-  <script src="/socket.io/socket.io.js"></script>
+  <!-- Supabase Realtime Integration -->
+  <script src="https://unpkg.com/@supabase/supabase-js"></script>
   <script>
-    const socket = io();
+    // Fetch Supabase environment variables from the server-side and pass to the client
+    const supabaseUrl = "{{SUPABASE_URL}}";   // This needs to be dynamically injected
+    const supabaseAnonKey = "{{SUPABASE_ANON_KEY}}";  // Dynamically injected
+    
+    const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+
     const passphraseForm = document.getElementById('passphrase-form');
     const adminPanel = document.getElementById('admin-panel');
     const submitPassphraseBtn = document.getElementById('submitPassphrase');
@@ -115,10 +121,33 @@
       if (passphraseInput.value === correctPassphrase) {
         passphraseForm.classList.add('hidden');
         adminPanel.style.display = 'block';
+        fetchNumbers(); // Fetch numbers when passphrase is correct
+        subscribeToUpdates(); // Subscribe to real-time updates
       } else {
         passphraseError.classList.remove('hidden');
       }
     });
+
+    // Fetch all numbers
+    async function fetchNumbers() {
+      const { data, error } = await supabase
+        .from('numbers')
+        .select('*');
+      
+      if (!error) {
+        updateTable(data);
+      }
+    }
+
+    // Subscribe to real-time updates via Supabase
+    function subscribeToUpdates() {
+      supabase
+        .from('numbers')
+        .on('UPDATE', payload => {
+          fetchNumbers(); // Refresh the table on every update
+        })
+        .subscribe();
+    }
 
     // Function to update the table dynamically with checkboxes and color coding
     function updateTable(numbers) {
@@ -224,32 +253,8 @@
       .then(response => response.json())
       .then(data => {
         alert(data.message);
-        // Refresh the table after confirming payment
-        socket.emit('refreshNumbers');
+        fetchNumbers(); // Refresh the table after confirming payment
       });
-    });
-
-    // Fetch initial numbers from the server
-    socket.on('numbersList', (numbers) => {
-      updateTable(numbers);
-    });
-
-    // Listen for updates when a number's status changes
-    socket.on('numberReserved', () => {
-      fetch('/api/numbers')
-        .then(response => response.json())
-        .then(data => {
-          updateTable(data.numbers);
-        });
-    });
-
-    // Refresh numbers upon manual admin action
-    socket.on('refreshNumbers', () => {
-      fetch('/api/numbers')
-        .then(response => response.json())
-        .then(data => {
-          updateTable(data.numbers);
-        });
     });
   </script>
 </body>

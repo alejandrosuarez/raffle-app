@@ -1,6 +1,5 @@
 const express = require('express');
 const http = require('http');
-const socketIo = require('socket.io');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -11,7 +10,6 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
 
 // Middleware for parsing JSON - Ensure this is present
 app.use(express.json());
@@ -29,6 +27,20 @@ app.get('/api/numbers', async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
   res.json({ numbers: data });
+});
+
+app.get('/admin', (req, res) => {
+  const htmlFilePath = path.join(__dirname, '../public/admin.html');
+  fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
+    if (err) {
+      return res.status(500).send('Error reading admin.html');
+    }
+    // Inject environment variables
+    const updatedHtml = data
+      .replace('{{SUPABASE_URL}}', process.env.SUPABASE_URL)
+      .replace('{{SUPABASE_ANON_KEY}}', process.env.SUPABASE_ANON_KEY);
+    res.send(updatedHtml);
+  });
 });
 
 // Reserve multiple numbers and store user info in Supabase
@@ -58,7 +70,6 @@ app.post('/api/reserve-numbers', async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  io.emit('numberReserved');
   res.json({ message: `Numbers ${numbers.join(', ')} reserved successfully!` });
 });
 
@@ -83,7 +94,6 @@ app.post('/api/confirm-payment', async (req, res) => {
     return res.status(500).json({ error: error.message });
   }
 
-  io.emit('refreshNumbers');
   res.json({ message: `Payment confirmed for numbers: ${numbers.join(', ')}!` });
 });
 
@@ -108,7 +118,6 @@ async function checkExpiredReservations() {
     console.error('Error updating expired reservations:', error);
   } else if (data.length > 0) {
     console.log(`Expired reservations updated: ${data.length} rows.`);
-    io.emit('refreshNumbers');
   }
 }
 
