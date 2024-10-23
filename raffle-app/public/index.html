@@ -91,7 +91,7 @@
     // Fetch Supabase environment variables
     const supabaseUrl = "{{SUPABASE_URL}}";
     const supabaseAnonKey = "{{SUPABASE_ANON_KEY}}";
-    const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+    const supabaseClient = supabase.createClient(supabaseUrl, supabaseAnonKey);
 
     const numbersGrid = document.getElementById('numbersGrid');
     const userForm = document.getElementById('userForm');
@@ -175,7 +175,7 @@
 
     // Fetch initial numbers from Supabase
     async function fetchNumbers() {
-      const { data, error } = await supabase
+      const { data, error } = await supabaseClient
         .from('numbers')
         .select('*');
       
@@ -186,7 +186,7 @@
 
     // Subscribe to real-time updates via Supabase
     function subscribeToUpdates() {
-      supabase
+      supabaseClient
         .from('numbers')
         .on('UPDATE', payload => {
           fetchNumbers(); // Refresh the grid on every update
