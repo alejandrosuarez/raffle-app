@@ -1,5 +1,6 @@
 const express = require('express');
 const http = require('http');
+const fs = require('fs');
 const path = require('path');
 const { createClient } = require('@supabase/supabase-js');
 
@@ -37,25 +38,30 @@ app.get('/admin', (req, res) => {
     }
     // Inject environment variables
     const updatedHtml = data
-      .replace('{{SUPABASE_URL}}', process.env.SUPABASE_URL)
-      .replace('{{SUPABASE_ANON_KEY}}', process.env.SUPABASE_ANON_KEY);
+      .replace('{{SUPABASE_URL}}', supabaseUrl)
+      .replace('{{SUPABASE_ANON_KEY}}', supabaseAnonKey);
     res.send(updatedHtml);
   });
 });
 
+// Serve the index.html with Supabase environment variables injected
 app.get('/', (req, res) => {
   const htmlFilePath = path.join(__dirname, '../public/index.html');
+  
   fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
     if (err) {
       return res.status(500).send('Error reading index.html');
     }
-    // Inject environment variables
+
+    // Replace the placeholders with actual environment variable values
     const updatedHtml = data
-      .replace('{{SUPABASE_URL}}', process.env.SUPABASE_URL)
-      .replace('{{SUPABASE_ANON_KEY}}', process.env.SUPABASE_ANON_KEY);
+      .replace('{{SUPABASE_URL}}', supabaseUrl)
+      .replace('{{SUPABASE_ANON_KEY}}', supabaseAnonKey);
+
     res.send(updatedHtml);
   });
 });
+
 
 
 // Reserve multiple numbers and store user info in Supabase
@@ -149,3 +155,11 @@ server.listen(port, () => {
 module.exports = (req, res) => {
   server.emit('request', req, res);
 };
+
+// Debug logging: Output server information and environment variables
+// Remove or comment out this block before deploying to production
+server.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+  console.log('Supabase URL:', supabaseUrl);
+  console.log('Supabase Anon Key:', supabaseAnonKey);
+});
