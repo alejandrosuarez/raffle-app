@@ -36,15 +36,15 @@ app.get('/admin', (req, res) => {
     if (err) {
       return res.status(500).send('Error reading admin.html');
     }
-    // Inject environment variables
+    // Ensure the environment variables are replaced properly
     const updatedHtml = data
-      .replace('{{SUPABASE_URL}}', supabaseUrl)
-      .replace('{{SUPABASE_ANON_KEY}}', supabaseAnonKey);
+      .replace(/\{\{SUPABASE_URL\}\}/g, supabaseUrl)
+      .replace(/\{\{SUPABASE_ANON_KEY\}\}/g, supabaseAnonKey);
+    
     res.send(updatedHtml);
   });
 });
 
-// Serve the index.html with Supabase environment variables injected
 app.get('/', (req, res) => {
   const htmlFilePath = path.join(__dirname, '../public/index.html');
   
@@ -55,8 +55,8 @@ app.get('/', (req, res) => {
 
     // Replace the placeholders with actual environment variable values
     const updatedHtml = data
-      .replace('{{SUPABASE_URL}}', supabaseUrl)
-      .replace('{{SUPABASE_ANON_KEY}}', supabaseAnonKey);
+      .replace(/\{\{SUPABASE_URL\}\}/g, supabaseUrl)
+      .replace(/\{\{SUPABASE_ANON_KEY\}\}/g, supabaseAnonKey);
 
     res.send(updatedHtml);
   });
