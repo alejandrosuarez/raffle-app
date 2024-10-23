@@ -1,8 +1,13 @@
 const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
 const http = require('http');
 const socketIo = require('socket.io');
 const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
+
+// Load environment variables
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
+const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const app = express();
 const server = http.createServer(app);
@@ -14,24 +19,20 @@ app.use(express.json());
 // Serve static files from the /public directory
 app.use(express.static(path.join(__dirname, '../public')));
 
-// SQLite Database Connection
-const db = new sqlite3.Database('./raffle.db');
+// Fetch all raffle numbers from Supabase
+app.get('/api/numbers', async (req, res) => {
+  const { data, error } = await supabase
+    .from('numbers')
+    .select('*');
 
-// Fetch all raffle numbers
-app.get('/api/numbers', (req, res) => {
-  db.all("SELECT * FROM Numbers", [], (err, rows) => {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    res.json({ numbers: rows });
-  });
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+  res.json({ numbers: data });
 });
 
-// Reserve multiple numbers and store user info
-app.post('/api/reserve-numbers', (req, res) => {
-  // Log the body to debug
-  console.log('Received POST body:', req.body);
-
+// Reserve multiple numbers and store user info in Supabase
+app.post('/api/reserve-numbers', async (req, res) => {
   const { numbers, name, email, phone } = req.body;
   const reservationExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
 
@@ -39,67 +40,76 @@ app.post('/api/reserve-numbers', (req, res) => {
     return res.status(400).json({ message: 'Missing required information.' });
   }
 
-  const placeholders = numbers.map(() => '?').join(',');
-  const query = `UPDATE Numbers SET status = 'reserved', name = ?, email = ?, phone = ?, reservation_date = datetime('now'), reservation_expiry = ? WHERE number IN (${placeholders}) AND status = 'available'`;
+  const updates = numbers.map((number) => ({
+    number,
+    status: 'reserved',
+    name,
+    email,
+    phone,
+    reservation_date: new Date(),
+    reservation_expiry: reservationExpiry,
+  }));
 
-  db.run(query, [name, email, phone, reservationExpiry, ...numbers], function(err) {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    io.emit('numberReserved');
-    res.json({ message: `Numbers ${numbers.join(', ')} reserved successfully!` });
-  });
+  const { data, error } = await supabase
+    .from('numbers')
+    .upsert(updates, { onConflict: ['number'] });
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  io.emit('numberReserved');
+  res.json({ message: `Numbers ${numbers.join(', ')} reserved successfully!` });
 });
 
-// Socket.io connection for real-time updates
-io.on('connection', (socket) => {
-  console.log('New client connected');
-  
-  db.all("SELECT * FROM Numbers", [], (err, rows) => {
-    if (!err) {
-      socket.emit('numbersList', rows);
-    }
-  });
-
-  socket.on('disconnect', () => {
-    console.log('Client disconnected');
-  });
-});
-
-// Confirm payment for selected reserved numbers
-app.post('/api/confirm-payment', (req, res) => {
+// Confirm payment and update status to 'sold' in Supabase
+app.post('/api/confirm-payment', async (req, res) => {
   const { numbers } = req.body;
 
   if (!numbers || numbers.length === 0) {
     return res.status(400).json({ message: 'No numbers selected for payment confirmation.' });
   }
 
-  const placeholders = numbers.map(() => '?').join(',');
-  const query = `UPDATE Numbers SET status = 'sold' WHERE number IN (${placeholders}) AND status = 'reserved'`;
+  const updates = numbers.map((number) => ({
+    number,
+    status: 'sold',
+  }));
 
-  db.run(query, [...numbers], function(err) {
-    if (err) {
-      return res.status(500).json({ error: err.message });
-    }
-    io.emit('refreshNumbers'); // Emit an event to refresh all numbers
-    res.json({ message: `Payment confirmed for numbers: ${numbers.join(', ')}!` });
-  });
+  const { data, error } = await supabase
+    .from('numbers')
+    .upsert(updates, { onConflict: ['number'] });
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  io.emit('refreshNumbers');
+  res.json({ message: `Payment confirmed for numbers: ${numbers.join(', ')}!` });
 });
 
-// Function to update expired reservations automatically
-function checkExpiredReservations() {
+// Function to update expired reservations automatically in Supabase
+async function checkExpiredReservations() {
   const now = new Date().toISOString();
-  const query = `UPDATE Numbers SET status = 'available', name = NULL, email = NULL, phone = NULL, reservation_date = NULL, reservation_expiry = NULL
-                 WHERE status = 'reserved' AND reservation_expiry <= ?`;
+  
+  const { data, error } = await supabase
+    .from('numbers')
+    .update({
+      status: 'available',
+      name: null,
+      email: null,
+      phone: null,
+      reservation_date: null,
+      reservation_expiry: null,
+    })
+    .eq('status', 'reserved')
+    .lt('reservation_expiry', now);
 
-  db.run(query, [now], function(err) {
-    if (err) {
-      console.error('Error updating expired reservations:', err);
-    } else if (this.changes > 0) {
-      console.log(`Expired reservations updated: ${this.changes} rows.`);
-      io.emit('refreshNumbers'); // Emit an event to refresh all numbers on the frontend
-    }
-  });
+  if (error) {
+    console.error('Error updating expired reservations:', error);
+  } else if (data.length > 0) {
+    console.log(`Expired reservations updated: ${data.length} rows.`);
+    io.emit('refreshNumbers');
+  }
 }
 
 // Run the expiration check every minute
