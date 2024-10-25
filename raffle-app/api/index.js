@@ -20,23 +20,31 @@ app.use(express.static(path.join(__dirname, '../public')));
 
 // Fetch all raffle numbers from Supabase
 app.get('/api/numbers', async (req, res) => {
+  console.log('Fetching raffle numbers from database...');
+  
   const { data, error } = await supabase
     .from('numbers')
     .select('*');
 
   if (error) {
+    console.error('Error fetching numbers:', error);
     return res.status(500).json({ error: error.message });
   }
+
+  console.log('Raffle numbers fetched successfully.');
   res.json({ numbers: data });
 });
 
+// Serve the admin HTML page with environment variable injection
 app.get('/admin', (req, res) => {
   const htmlFilePath = path.join(__dirname, '../public/admin.html');
   fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
     if (err) {
+      console.error('Error reading admin.html:', err);
       return res.status(500).send('Error reading admin.html');
     }
-    // Ensure the environment variables are replaced properly
+
+    // Inject environment variables into the HTML file
     const updatedHtml = data
       .replace(/\{\{SUPABASE_URL\}\}/g, supabaseUrl)
       .replace(/\{\{SUPABASE_ANON_KEY\}\}/g, supabaseAnonKey);
@@ -45,15 +53,17 @@ app.get('/admin', (req, res) => {
   });
 });
 
+// Serve the index.html page with environment variable injection
 app.get('/', (req, res) => {
   const htmlFilePath = path.join(__dirname, '../public/index.html');
   
   fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
     if (err) {
+      console.error('Error reading index.html:', err);
       return res.status(500).send('Error reading index.html');
     }
 
-    // Replace the placeholders with actual environment variable values
+    // Inject environment variables into the HTML file
     const updatedHtml = data
       .replace(/\{\{SUPABASE_URL\}\}/g, supabaseUrl)
       .replace(/\{\{SUPABASE_ANON_KEY\}\}/g, supabaseAnonKey);
@@ -64,6 +74,8 @@ app.get('/', (req, res) => {
 
 // Endpoint to populate the numbers table
 app.get('/api/populate', async (req, res) => {
+  console.log('Populating numbers table with 100 entries...');
+
   const numbers = Array.from({ length: 100 }, (_, i) => ({
     number: i + 1,
     status: 'available'
@@ -74,18 +86,23 @@ app.get('/api/populate', async (req, res) => {
     .insert(numbers);
 
   if (error) {
+    console.error('Error populating numbers table:', error);
     return res.status(500).json({ error: error.message });
   }
 
+  console.log('Numbers table populated successfully.');
   res.json({ message: 'Database populated successfully!', data });
 });
 
 // Reserve multiple numbers and store user info in Supabase
 app.post('/api/reserve-numbers', async (req, res) => {
+  console.log('Reserving numbers...');
+  
   const { numbers, name, email, phone } = req.body;
   const reservationExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
 
   if (!numbers || !name || !email || !phone) {
+    console.error('Missing required information.');
     return res.status(400).json({ message: 'Missing required information.' });
   }
 
@@ -104,17 +121,22 @@ app.post('/api/reserve-numbers', async (req, res) => {
     .upsert(updates, { onConflict: ['number'] });
 
   if (error) {
+    console.error('Error reserving numbers:', error);
     return res.status(500).json({ error: error.message });
   }
 
+  console.log(`Numbers reserved: ${numbers.join(', ')}`);
   res.json({ message: `Numbers ${numbers.join(', ')} reserved successfully!` });
 });
 
 // Confirm payment and update status to 'sold' in Supabase
 app.post('/api/confirm-payment', async (req, res) => {
+  console.log('Confirming payment for numbers...');
+  
   const { numbers } = req.body;
 
   if (!numbers || numbers.length === 0) {
+    console.error('No numbers selected for payment confirmation.');
     return res.status(400).json({ message: 'No numbers selected for payment confirmation.' });
   }
 
@@ -128,16 +150,20 @@ app.post('/api/confirm-payment', async (req, res) => {
     .upsert(updates, { onConflict: ['number'] });
 
   if (error) {
+    console.error('Error confirming payment:', error);
     return res.status(500).json({ error: error.message });
   }
 
+  console.log(`Payment confirmed for numbers: ${numbers.join(', ')}`);
   res.json({ message: `Payment confirmed for numbers: ${numbers.join(', ')}!` });
 });
 
 // Function to update expired reservations automatically in Supabase
 async function checkExpiredReservations() {
-  const now = new Date().toISOString();
+  console.log('Checking for expired reservations...');
   
+  const now = new Date().toISOString();
+
   const { data, error } = await supabase
     .from('numbers')
     .update({
@@ -173,7 +199,6 @@ module.exports = (req, res) => {
 };
 
 // Debug logging: Output server information and environment variables
-// Remove or comment out this block before deploying to production
 server.listen(port, () => {
   console.log(`Server is running on port ${port}`);
   console.log('Supabase URL:', supabaseUrl);
