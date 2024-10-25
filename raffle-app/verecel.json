@@ -1,11 +1,8 @@
 {
-"projects": {
-    "rootDirectory": "raffle-app"
-},
-"rewrites": [
+    "rewrites": [
       {
         "source": "/api/(.*)",
-        "destination": "/api/index.js"
+        "destination": "/raffle-app/api/index.js"
       }
     ]
-}
+  }
