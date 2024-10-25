@@ -8,8 +8,7 @@
   "dependencies": {
     "express": "^4.17.1",
     "socket.io": "^4.0.0",
-    "@supabase/supabase-js": "^1.28.5",
-    "@vercel/speed-insights": "latest"
+    "@supabase/supabase-js": "^1.28.5"
   },
   "engines": {
     "node": ">=16.x"
