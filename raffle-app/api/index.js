@@ -62,7 +62,23 @@ app.get('/', (req, res) => {
   });
 });
 
+// Endpoint to populate the numbers table
+app.get('/api/populate', async (req, res) => {
+  const numbers = Array.from({ length: 100 }, (_, i) => ({
+    number: i + 1,
+    status: 'available'
+  }));
 
+  const { data, error } = await supabase
+    .from('numbers')
+    .insert(numbers);
+
+  if (error) {
+    return res.status(500).json({ error: error.message });
+  }
+
+  res.json({ message: 'Database populated successfully!', data });
+});
 
 // Reserve multiple numbers and store user info in Supabase
 app.post('/api/reserve-numbers', async (req, res) => {
