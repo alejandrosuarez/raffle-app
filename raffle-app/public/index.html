@@ -86,7 +86,8 @@
   </div>
 
   <!-- Supabase Realtime Integration -->
-  <script src="https://unpkg.com/@supabase/supabase-js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
   <script>
     // Fetch Supabase environment variables
     const supabaseUrl = "https://likwoacdqeqsolyoixei.supabase.co";
@@ -187,8 +188,8 @@
     // Subscribe to real-time updates via Supabase
     function subscribeToUpdates() {
       supabaseClient
-        .from('numbers')
-        .on('UPDATE', payload => {
+        .channel('realtime:numbers')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'numbers' }, payload => {
           fetchNumbers(); // Refresh the grid on every update
         })
         .subscribe();
