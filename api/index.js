@@ -151,7 +151,7 @@ async function checkExpiredReservations() {
 
   if (error) {
     console.error('Error updating expired reservations:', error);
-  } else if (data.length > 0) {
+  } else if ((data || []).length > 0) { // Safely handle null by defaulting to an empty array
     console.log(`Expired reservations updated: ${data.length} rows.`);
   }
 }
