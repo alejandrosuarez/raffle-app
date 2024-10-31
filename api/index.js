@@ -1,164 +1,67 @@
 const express = require('express');
+const { createClient } = require('@supabase/supabase-js');
+const path = require('path');
 const http = require('http');
 const fs = require('fs');
-const path = require('path');
-const { createClient } = require('@supabase/supabase-js');
-
-// Load environment variables
-const supabaseUrl = process.env.SUPABASE_URL;
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
+require('dotenv').config();
 
 const app = express();
-const server = http.createServer(app);
+const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 
-// Middleware for parsing JSON - Ensure this is present
 app.use(express.json());
+app.use(express.static('../public'));
 
-// Serve static files from the /public directory
-app.use(express.static(path.join(__dirname, '../public')));
-
-// Fetch all raffle numbers from Supabase
+// Get all numbers
 app.get('/api/numbers', async (req, res) => {
-  console.log('Fetching raffle numbers from database...');
-  
-  const { data, error } = await supabase
-    .from('numbers')
-    .select('*');
-
-  if (error) {
-    console.error('Error fetching numbers:', error);
-    return res.status(500).json({ error: error.message });
-  }
-
-  console.log('Raffle numbers fetched successfully.');
+  const { data, error } = await supabase.from('numbers').select('*').order('number', { ascending: true });
+  if (error) return res.status(500).json({ error: error.message });
   res.json({ numbers: data });
 });
 
-// Serve the admin HTML page with environment variable injection
-app.get('/admin', (req, res) => {
-  const htmlFilePath = path.join(__dirname, '../public/admin.html');
-  fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
-    if (err) {
-      console.error('Error reading admin.html:', err);
-      return res.status(500).send('Error reading admin.html');
-    }
-
-    // Inject environment variables into the HTML file
-    const updatedHtml = data
-      .replace(/\{\{SUPABASE_URL\}\}/g, supabaseUrl)
-      .replace(/\{\{SUPABASE_ANON_KEY\}\}/g, supabaseAnonKey);
-    
-    res.send(updatedHtml);
-  });
-});
-
-// Serve the index.html page with environment variable injection
-app.get('/', (req, res) => {
-  const htmlFilePath = path.join(__dirname, '../public/index.html');
-  
-  fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
-    if (err) {
-      console.error('Error reading index.html:', err);
-      return res.status(500).send('Error reading index.html');
-    }
-
-    // Inject environment variables into the HTML file
-    const updatedHtml = data
-      .replace(/\{\{SUPABASE_URL\}\}/g, supabaseUrl)
-      .replace(/\{\{SUPABASE_ANON_KEY\}\}/g, supabaseAnonKey);
-
-    res.send(updatedHtml);
-  });
-});
-
-// Endpoint to populate the numbers table
-app.get('/api/populate', async (req, res) => {
-  console.log('Populating numbers table with 100 entries...');
-
-  const numbers = Array.from({ length: 100 }, (_, i) => ({
-    number: i + 1,
-    status: 'available'
-  }));
-
-  const { data, error } = await supabase
-    .from('numbers')
-    .insert(numbers);
-
-  if (error) {
-    console.error('Error populating numbers table:', error);
-    return res.status(500).json({ error: error.message });
-  }
-
-  console.log('Numbers table populated successfully.');
-  res.json({ message: 'Database populated successfully!', data });
-});
-
-// Reserve multiple numbers and store user info in Supabase
+// Reserve numbers
 app.post('/api/reserve-numbers', async (req, res) => {
-  console.log('Reserving numbers...');
-  
   const { numbers, name, email, phone } = req.body;
-  const reservationExpiry = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes from now
-
-  if (!numbers || !name || !email || !phone) {
-    console.error('Missing required information.');
-    return res.status(400).json({ message: 'Missing required information.' });
-  }
-
-  const updates = numbers.map((number) => ({
-    number,
+  const updates = numbers.map(num => ({
+    number: num,
     status: 'reserved',
     name,
     email,
     phone,
     reservation_date: new Date(),
-    reservation_expiry: reservationExpiry,
   }));
 
-  const { data, error } = await supabase
-    .from('numbers')
-    .upsert(updates, { onConflict: ['number'] });
-
-  if (error) {
-    console.error('Error reserving numbers:', error);
-    return res.status(500).json({ error: error.message });
-  }
-
-  console.log(`Numbers reserved: ${numbers.join(', ')}`);
-  res.json({ message: `Numbers ${numbers.join(', ')} reserved successfully!` });
+  const { error } = await supabase.from('numbers').upsert(updates, { onConflict: ['number'] });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ message: `Reserved numbers: ${numbers.join(', ')}` });
 });
 
-// Confirm payment and update status to 'sold' in Supabase
+// Confirm payment and mark numbers as sold
 app.post('/api/confirm-payment', async (req, res) => {
-  console.log('Confirming payment for numbers...');
-  
   const { numbers } = req.body;
-
-  if (!numbers || numbers.length === 0) {
-    console.error('No numbers selected for payment confirmation.');
-    return res.status(400).json({ message: 'No numbers selected for payment confirmation.' });
-  }
-
-  const updates = numbers.map((number) => ({
-    number,
-    status: 'sold',
-  }));
-
-  const { data, error } = await supabase
-    .from('numbers')
-    .upsert(updates, { onConflict: ['number'] });
-
-  if (error) {
-    console.error('Error confirming payment:', error);
-    return res.status(500).json({ error: error.message });
-  }
-
-  console.log(`Payment confirmed for numbers: ${numbers.join(', ')}`);
-  res.json({ message: `Payment confirmed for numbers: ${numbers.join(', ')}!` });
+  const updates = numbers.map(num => ({ number: num, status: 'sold' }));
+  const { error } = await supabase.from('numbers').upsert(updates, { onConflict: ['number'] });
+  if (error) return res.status(500).json({ error: error.message });
+  res.json({ message: `Payment confirmed for numbers: ${numbers.join(', ')}` });
 });
 
-// Function to update expired reservations automatically in Supabase
+// Endpoint to get all raffle numbers for admin display
+app.get('/api/admin/numbers', async (req, res) => {
+  try {
+    const { data, error } = await supabase
+      .from('numbers')
+      .select('*')
+      .order('number', { ascending: true }); // Sorting by number
+
+    if (error) throw error;
+
+    res.json({ numbers: data });
+  } catch (error) {
+    console.error('Error fetching numbers for admin:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Automated cleanup of expired reservations
 async function checkExpiredReservations() {
   console.log('Checking for expired reservations...');
   
@@ -184,23 +87,35 @@ async function checkExpiredReservations() {
   }
 }
 
-// Run the expiration check every minute
-setInterval(checkExpiredReservations, 60000); // Check every 60 seconds
 
-// Start the server
+// Serve the index.html page with environment variable injection
+app.get('/', (req, res) => {
+  const htmlFilePath = path.join(__dirname, '../public/index.html');
+  fs.readFile(htmlFilePath, 'utf-8', (err, data) => {
+    if (err) {
+      console.error('Error reading index.html:', err);
+      return res.status(500).send('Error loading index.html');
+    }
+
+    res.send(data);
+  });
+});  
+
+// Serve the admin.html page
+app.get('/admin', (req, res) => {
+  const filePath = path.join(__dirname, '../public/admin.html');
+
+  fs.readFile(filePath, 'utf-8', (err, data) => {
+    if (err) {
+      console.error('Error reading admin.html:', err);
+      return res.status(500).send('Error loading admin.html');
+    }
+
+    res.send(data);
+  });
+});
+
+setInterval(checkExpiredReservations, 60000); // Run every minute
+
 const port = process.env.PORT || 3000;
-server.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
-
-// Export the server object to be handled by Vercel
-module.exports = (req, res) => {
-  server.emit('request', req, res);
-};
-
-// Debug logging: Output server information and environment variables
-server.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-  console.log('Supabase URL:', supabaseUrl);
-  console.log('Supabase Anon Key:', supabaseAnonKey);
-});
+app.listen(port, () => console.log(`Server running on port ${port}`));

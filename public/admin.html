@@ -56,7 +56,6 @@
       margin: 20px auto;
     }
   </style>
-  <!-- Supabase Realtime Integration -->
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -72,7 +71,6 @@
 
   <!-- Admin Panel -->
   <div id="admin-panel">
-    <!-- Table to display numbers and user details -->
     <table>
       <thead>
         <tr>
@@ -86,178 +84,147 @@
         </tr>
       </thead>
       <tbody id="numbersTable">
-        <!-- Numbers will be dynamically inserted here -->
       </tbody>
     </table>
-
-    <!-- Admin actions to confirm payments -->
     <div id="admin-actions" class="hidden">
       <button id="confirmPayment">Confirm Payment</button>
     </div>
   </div>
 
-  <!-- Supabase Realtime Integration -->
-  <script src="https://unpkg.com/@supabase/supabase-js"></script>
   <script>
-    // Fetch Supabase environment variables from the server-side and pass to the client
-    const supabaseUrl = "{{SUPABASE_URL}}";   // This needs to be dynamically injected
-    const supabaseAnonKey = "{{SUPABASE_ANON_KEY}}";  // Dynamically injected
-    
-    const supabase = supabase.createClient(supabaseUrl, supabaseAnonKey);
+    const elements = {
+      passphraseForm: document.getElementById('passphrase-form'),
+      adminPanel: document.getElementById('admin-panel'),
+      passphraseInput: document.getElementById('passphrase'),
+      passphraseError: document.getElementById('passphrase-error'),
+      numbersTable: document.getElementById('numbersTable'),
+      adminActions: document.getElementById('admin-actions'),
+      confirmPaymentBtn: document.getElementById('confirmPayment')
+    };
 
-    const passphraseForm = document.getElementById('passphrase-form');
-    const adminPanel = document.getElementById('admin-panel');
-    const submitPassphraseBtn = document.getElementById('submitPassphrase');
-    const passphraseInput = document.getElementById('passphrase');
-    const passphraseError = document.getElementById('passphrase-error');
-    const numbersTable = document.getElementById('numbersTable');
-    const adminActions = document.getElementById('admin-actions');
-    const confirmPaymentBtn = document.getElementById('confirmPayment');
-
-    const correctPassphrase = 'admin123'; // Set the correct passphrase here
+    const correctPassphrase = 'admin123';
     let selectedReservedNumbers = [];
     let countdownIntervals = {};
 
-    // Handle passphrase submission
-    submitPassphraseBtn.addEventListener('click', () => {
-      if (passphraseInput.value === correctPassphrase) {
-        passphraseForm.classList.add('hidden');
-        adminPanel.style.display = 'block';
-        fetchNumbers(); // Fetch numbers when passphrase is correct
-        subscribeToUpdates(); // Subscribe to real-time updates
+    elements.confirmPaymentBtn.addEventListener('click', confirmPayment);
+    document.getElementById('submitPassphrase').addEventListener('click', handlePassphrase);
+
+    function handlePassphrase() {
+      if (elements.passphraseInput.value === correctPassphrase) {
+        elements.passphraseForm.classList.add('hidden');
+        elements.adminPanel.style.display = 'block';
+        fetchNumbers();
+        subscribeToUpdates();
       } else {
-        passphraseError.classList.remove('hidden');
+        elements.passphraseError.classList.remove('hidden');
       }
-    });
+    }
 
-    // Fetch all numbers
     async function fetchNumbers() {
-      const { data, error } = await supabase
-        .from('numbers')
-        .select('*');
-      
-      if (!error) {
-        updateTable(data);
+      try {
+        const response = await fetch('/api/admin/numbers');
+        const { numbers } = await response.json();
+        updateTable(numbers);
+      } catch (error) {
+        console.error("Error fetching numbers:", error);
       }
     }
 
-    // Subscribe to real-time updates via Supabase
     function subscribeToUpdates() {
-      supabase
-        .from('numbers')
-        .on('UPDATE', payload => {
-          fetchNumbers(); // Refresh the table on every update
-        })
-        .subscribe();
+      // This subscribes to an API endpoint for real-time updates
+      const eventSource = new EventSource('/api/admin/subscribe');
+      eventSource.onmessage = () => fetchNumbers();
     }
 
-    // Function to update the table dynamically with checkboxes and color coding
     function updateTable(numbers) {
-      numbersTable.innerHTML = '';
+      elements.numbersTable.innerHTML = '';
       numbers.forEach(number => {
-        const row = document.createElement('tr');
-        
-        const selectCell = document.createElement('td');
-        const checkbox = document.createElement('input');
-        checkbox.type = 'checkbox';
-        if (number.status === 'reserved') {
-          checkbox.addEventListener('change', () => toggleSelected(number.number, checkbox));
-        } else {
-          checkbox.disabled = true;
-        }
-        selectCell.appendChild(checkbox);
-        row.appendChild(selectCell);
-        
-        const numberCell = document.createElement('td');
-        numberCell.textContent = number.number;
-        row.appendChild(numberCell);
-        
-        const nameCell = document.createElement('td');
-        nameCell.textContent = number.name || 'N/A';
-        row.appendChild(nameCell);
-        
-        const emailCell = document.createElement('td');
-        emailCell.textContent = number.email || 'N/A';
-        row.appendChild(emailCell);
-        
-        const phoneCell = document.createElement('td');
-        phoneCell.textContent = number.phone || 'N/A';
-        row.appendChild(phoneCell);
-
-        const expiryCell = document.createElement('td');
-        if (number.status === 'reserved') {
-          expiryCell.id = `expiry-${number.number}`; // Assign a unique ID to the cell
-          updateCountdown(number.number, number.reservation_expiry); // Start real-time countdown
-        } else {
-          expiryCell.textContent = 'N/A';
-        }
-        row.appendChild(expiryCell);
-
-        const statusCell = document.createElement('td');
-        statusCell.textContent = number.status;
-        row.classList.add(number.status); // Add color class for status
-        row.appendChild(statusCell);
-
-        numbersTable.appendChild(row);
+        const row = createRow(number);
+        elements.numbersTable.appendChild(row);
       });
     }
 
-    // Toggle selected reserved numbers
-    function toggleSelected(number, checkbox) {
-      if (checkbox.checked) {
-        selectedReservedNumbers.push(number);
-      } else {
-        selectedReservedNumbers = selectedReservedNumbers.filter(n => n !== number);
-      }
-      adminActions.classList.toggle('hidden', selectedReservedNumbers.length === 0);
+    function createRow(number) {
+      const row = document.createElement('tr');
+      row.classList.add(number.status);
+      row.appendChild(createSelectCell(number));
+      row.appendChild(createCell(number.number));
+      row.appendChild(createCell(number.name || 'N/A'));
+      row.appendChild(createCell(number.email || 'N/A'));
+      row.appendChild(createCell(number.phone || 'N/A'));
+      row.appendChild(createExpiryCell(number));
+      row.appendChild(createCell(number.status));
+      return row;
     }
 
-    // Update the countdown in real-time
+    function createSelectCell(number) {
+      const cell = document.createElement('td');
+      const checkbox = document.createElement('input');
+      checkbox.type = 'checkbox';
+      checkbox.disabled = number.status !== 'reserved';
+      checkbox.addEventListener('change', () => toggleSelected(number.number, checkbox));
+      cell.appendChild(checkbox);
+      return cell;
+    }
+
+    function createCell(content) {
+      const cell = document.createElement('td');
+      cell.textContent = content;
+      return cell;
+    }
+
+    function createExpiryCell(number) {
+      const cell = document.createElement('td');
+      if (number.status === 'reserved') {
+        cell.id = `expiry-${number.number}`;
+        updateCountdown(number.number, number.reservation_expiry);
+      } else {
+        cell.textContent = 'N/A';
+      }
+      return cell;
+    }
+
+    function toggleSelected(number, checkbox) {
+      selectedReservedNumbers = checkbox.checked
+        ? [...selectedReservedNumbers, number]
+        : selectedReservedNumbers.filter(n => n !== number);
+      elements.adminActions.classList.toggle('hidden', selectedReservedNumbers.length === 0);
+    }
+
     function updateCountdown(number, expiryTime) {
       const expiryDate = new Date(expiryTime);
-
-      // Clear any previous interval for this number
-      if (countdownIntervals[number]) {
-        clearInterval(countdownIntervals[number]);
-      }
+      if (countdownIntervals[number]) clearInterval(countdownIntervals[number]);
 
       countdownIntervals[number] = setInterval(() => {
-        const now = new Date();
-        const timeDiff = expiryDate - now;
+        const timeLeft = expiryDate - new Date();
         const expiryCell = document.getElementById(`expiry-${number}`);
-
-        if (timeDiff <= 0) {
+        if (timeLeft <= 0) {
           expiryCell.textContent = 'Expired';
-          clearInterval(countdownIntervals[number]); // Stop the countdown if expired
+          clearInterval(countdownIntervals[number]);
         } else {
-          const minutesLeft = Math.floor(timeDiff / 60000);
-          const secondsLeft = Math.floor((timeDiff % 60000) / 1000);
-          expiryCell.textContent = `${minutesLeft} min ${secondsLeft} sec`;
+          expiryCell.textContent = `${Math.floor(timeLeft / 60000)} min ${Math.floor((timeLeft % 60000) / 1000)} sec`;
         }
-      }, 1000); // Update every second
+      }, 1000);
     }
 
-    // Handle payment confirmation
-    confirmPaymentBtn.addEventListener('click', () => {
+    async function confirmPayment() {
       if (selectedReservedNumbers.length === 0) {
-        alert('Please select reserved numbers to confirm payment.');
-        return;
+        return alert('Please select reserved numbers to confirm payment.');
       }
 
-      // Send selected reserved numbers to the server to confirm payment
-      fetch('/api/confirm-payment', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({ numbers: selectedReservedNumbers }),
-      })
-      .then(response => response.json())
-      .then(data => {
-        alert(data.message);
-        fetchNumbers(); // Refresh the table after confirming payment
-      });
-    });
+      try {
+        const response = await fetch('/api/confirm-payment', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ numbers: selectedReservedNumbers })
+        });
+        const result = await response.json();
+        alert(result.message);
+        fetchNumbers();
+      } catch (error) {
+        console.error('Error confirming payment:', error);
+      }
+    }
   </script>
 </body>
 </html>
