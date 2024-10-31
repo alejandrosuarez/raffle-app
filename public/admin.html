@@ -88,6 +88,7 @@
     </table>
     <div id="admin-actions" class="hidden">
       <button id="confirmPayment">Confirm Payment</button>
+      <button id="clearSelection">Clear Selection</button>
     </div>
   </div>
 
@@ -206,6 +207,33 @@
         }
       }, 1000);
     }
+
+    // Add the new button element
+    const clearSelectionBtn = document.getElementById('clearSelection');
+
+    // Handle clearing the selected numbers
+    clearSelectionBtn.addEventListener('click', () => {
+      if (selectedReservedNumbers.length === 0) {
+        alert('Please select reserved numbers to clear.');
+        return;
+      }
+
+      // Send selected reserved numbers to the server to reset them to 'available'
+      fetch('/api/clear-selection', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ numbers: selectedReservedNumbers }),
+      })
+        .then(response => response.json())
+        .then(data => {
+          alert(data.message);
+          fetchNumbers(); // Refresh the table after clearing selection
+          selectedReservedNumbers = []; // Reset selected numbers
+          adminActions.classList.add('hidden'); // Hide actions if no selection
+        });
+    });
 
     async function confirmPayment() {
       if (selectedReservedNumbers.length === 0) {
